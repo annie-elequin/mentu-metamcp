@@ -6,7 +6,7 @@
 ## Files Added (12 files, 1053 insertions)
 
 ### Core Services
-- `docker-compose.yml` - Build-only compose (metamcp + ui services)
+- `docker-compose.yml` - Build-only compose (mentu-metamcp + mentu-metamcp-ui services)
 - `metamcp/Dockerfile` - MetaMCP container (Node 20, @mentu/metamcp@1.0.0)
 - `metamcp/entrypoint.sh` - Validates bearer token, builds CLI flags, inits config
 - `ui/Dockerfile` - Config editor container (Node 20 + Express)
@@ -99,9 +99,9 @@ MetaMCP :8080/mcp ← reads → Shared Volume /config/.mcp.json
 ## Testing
 
 1. Deploy in Portainer
-2. Check logs: `metamcp` and `metamcp-ui` containers running
+2. Check logs: `mentu-metamcp` and `mentu-metamcp-ui` containers running
 3. Open UI: `http://host:3000`, enter token, click Load Config
-4. Save a test change → verify metamcp logs show reload
+4. Save a test change → verify mentu-metamcp logs show reload
 5. Add client config, test tools list from MCP client
 
 ---
