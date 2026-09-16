@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  metamcp:
+  mentu-metamcp:
     build:
       context: ./metamcp
       dockerfile: Dockerfile
-    container_name: metamcp
+    container_name: mentu-metamcp
     restart: unless-stopped
     ports:
       - "${METAMCP_PORT:-8080}:8080"
@@ -20,11 +20,11 @@ services:
       timeout: 10s
       retries: 3
 
-  ui:
+  mentu-metamcp-ui:
     build:
       context: ./ui
       dockerfile: Dockerfile
-    container_name: metamcp-ui
+    container_name: mentu-metamcp-ui
     restart: unless-stopped
     ports:
       - "${UI_PORT:-3000}:3000"
@@ -33,7 +33,7 @@ services:
     volumes:
       - config:/config
     depends_on:
-      - metamcp
+      - mentu-metamcp
 
 volumes:
   config:
