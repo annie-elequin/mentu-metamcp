@@ -39,6 +39,10 @@ Add the following environment variables in the **Environment variables** section
 
 **Optional:**
 - `METAMCP_ALLOWED_ORIGINS`: Comma-separated CORS origins (e.g., `https://example.com,https://app.example.com`)
+- `METAMCP_PORT`: Host port mapped to MetaMCP (default `8080`). Set this in the stack env when host port 8080 already clashes.
+- `UI_PORT`: Host port mapped to the config UI (default `3000`). Set this in the stack env when host port 3000 already clashes.
+
+Container listen ports stay fixed (`8080` / `3000`); only the published host ports change.
 
 ### 4. Deploy Stack
 
@@ -51,8 +55,8 @@ Add the following environment variables in the **Environment variables** section
 
 ### 5. Access the Config UI
 
-1. Find the UI container's published port (default: 3000)
-2. Open `http://your-portainer-host:3000` in your browser
+1. Find the UI container's published port (default: 3000, or whatever you set in `UI_PORT`)
+2. Open `http://your-portainer-host:<UI_PORT>` in your browser
 3. Enter your bearer token (same as `METAMCP_HTTP_BEARER_TOKEN`)
 4. Click **Load Config** to load the current `.mcp.json`
 5. Edit your MCP server configurations
@@ -78,6 +82,7 @@ Configure your MCP client (Cursor, Claude Desktop, etc.) to connect via Streamab
 
 Replace:
 - `your-portainer-host` with your actual hostname or IP
+- `8080` with your `METAMCP_PORT` if you overrode it
 - `YOUR_BEARER_TOKEN_HERE` with your bearer token from step 1
 
 ## Configuration Format
@@ -102,11 +107,11 @@ Edit `.mcp.json` through the UI using this format:
 
 ## Port Configuration
 
-Default ports:
-- **8080**: MetaMCP HTTP transport endpoint (`/mcp`)
-- **3000**: Config UI
+Default host ports:
+- **8080**: MetaMCP HTTP transport endpoint (`/mcp`) — override with `METAMCP_PORT`
+- **3000**: Config UI — override with `UI_PORT`
 
-To change ports, modify the port mappings in `docker-compose.yml` before deploying or set environment overrides.
+Set `METAMCP_PORT` / `UI_PORT` in the Portainer stack environment when those defaults clash. Do not change the container-side ports in compose.
 
 ## Updating the Stack
 
@@ -125,7 +130,7 @@ Portainer will rebuild from the latest Git commit and restart the stack.
 ### Services won't start
 - Check stack logs for error messages
 - Verify `METAMCP_HTTP_BEARER_TOKEN` is set in environment variables
-- Ensure ports 8080 and 3000 are not already in use
+- If ports 8080 or 3000 are already in use, set `METAMCP_PORT` / `UI_PORT` in the stack env to free host ports
 
 ### UI shows "Unauthorized"
 - Verify you're using the correct bearer token (same as `METAMCP_HTTP_BEARER_TOKEN`)
@@ -133,7 +138,7 @@ Portainer will rebuild from the latest Git commit and restart the stack.
 
 ### MetaMCP connection fails
 - Verify the service is running: check container logs
-- Test connectivity: `curl -H "Authorization: Bearer YOUR_TOKEN" http://your-host:8080/health`
+- Test connectivity: `curl -H "Authorization: Bearer YOUR_TOKEN" http://your-host:<METAMCP_PORT>/health`
 - Check firewall rules and port accessibility
 
 ### Config changes not taking effect
