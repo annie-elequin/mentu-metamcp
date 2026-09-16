@@ -49,7 +49,7 @@ Container listen ports stay fixed (`8080` / `3000`); only the published host por
 1. Click **Deploy the stack**
 2. Wait for Portainer to:
    - Clone the repository
-   - Build both Docker images (`metamcp` and `ui`)
+   - Build both Docker images (`mentu-metamcp` and `mentu-metamcp-ui`)
    - Start the containers
 3. Check the stack logs to verify both services started successfully
 
@@ -143,7 +143,7 @@ Portainer will rebuild from the latest Git commit and restart the stack.
 
 ### Config changes not taking effect
 - MetaMCP watches the config file and reloads automatically
-- If issues persist, restart the `metamcp` container from Portainer
+- If issues persist, restart the `mentu-metamcp` container from Portainer
 - Check container logs for reload messages or errors
 
 ## Security Notes
