@@ -1,6 +1,12 @@
+# Multi-stage build: copy uv and uvx from official Astral image
+FROM ghcr.io/astral-sh/uv:latest AS uv
+
 FROM node:20-alpine
 
 WORKDIR /app
+
+# Copy uv and uvx binaries from Astral image
+COPY --from=uv /uv /uvx /usr/local/bin/
 
 # Install metamcp at pinned version
 RUN npm install -g @mentu/metamcp@1.0.0

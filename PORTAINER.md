@@ -125,6 +125,8 @@ To update after changes to the Git repository:
 
 Portainer will rebuild from the latest Git commit and restart the stack.
 
+**Note**: Recent updates added `uv` and `uvx` to the gateway image for stdio child MCPs like the official Portainer MCP (`uvx --from mcp-portainer portainer-mcp`). Redeploy the stack to pick up these binaries.
+
 ## Troubleshooting
 
 ### Services won't start

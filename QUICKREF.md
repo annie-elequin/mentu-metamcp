@@ -7,7 +7,7 @@
 
 ### Core Services
 - `docker-compose.yml` - Build-only compose (mentu-metamcp + mentu-metamcp-ui services)
-- `metamcp/Dockerfile` - MetaMCP container (Node 20, @mentu/metamcp@1.0.0)
+- `metamcp/Dockerfile` - MetaMCP container (Node 20, @mentu/metamcp@1.0.0, includes uv/uvx for stdio MCPs)
 - `metamcp/entrypoint.sh` - Validates bearer token, builds CLI flags, inits config
 - `ui/Dockerfile` - Config editor container (Node 20 + Express)
 - `ui/server.js` - API server (load/save config, bearer auth)
@@ -64,6 +64,7 @@ Replace:
 ## Key Features
 
 ✅ **Build-only compose** - No registry pulls (Portainer Git stack requirement)  
+✅ **Stdio MCP support** - Includes uv/uvx for stdio children like `uvx --from mcp-portainer portainer-mcp`  
 ✅ **Fail-closed auth** - Container exits if bearer token missing  
 ✅ **Auto-reload** - MetaMCP watches config file, reloads on save  
 ✅ **Shared volume** - `/config` mounted in both containers  
