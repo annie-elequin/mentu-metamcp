@@ -62,7 +62,7 @@ docker compose up -d
 ```
 
 This will:
-- Build both images (`metamcp` and `ui`)
+- Build both images (`mentu-metamcp` and `mentu-metamcp-ui`)
 - Create a shared `config` volume
 - Start both services with restart policies
 - Expose MetaMCP on port 8080 and UI on port 3000
@@ -167,14 +167,14 @@ See `config/.mcp.json.example` for more examples.
 
 ## Services
 
-### `metamcp`
+### `mentu-metamcp`
 - Node 20 Alpine
 - Runs `@mentu/metamcp@1.0.0`
 - Exposes HTTP transport on port 8080
 - Watches `/config/.mcp.json` for changes
 - Fails closed if `METAMCP_HTTP_BEARER_TOKEN` is not set
 
-### `ui`
+### `mentu-metamcp-ui`
 - Node 20 Alpine
 - Simple Express server + static HTML
 - Bearer token authentication (same token as MetaMCP)
@@ -256,7 +256,7 @@ docker compose config
 
 **MetaMCP won't start:**
 - Check `METAMCP_HTTP_BEARER_TOKEN` is set
-- View logs: `docker compose logs metamcp`
+- View logs: `docker compose logs mentu-metamcp`
 
 **UI shows "Unauthorized":**
 - Verify bearer token matches `METAMCP_HTTP_BEARER_TOKEN`
@@ -264,8 +264,8 @@ docker compose config
 
 **Config changes not applying:**
 - MetaMCP auto-reloads when config file changes
-- Check metamcp logs for reload messages
-- Restart if needed: `docker compose restart metamcp`
+- Check mentu-metamcp logs for reload messages
+- Restart if needed: `docker compose restart mentu-metamcp`
 
 **Can't connect from MCP client:**
 - Verify endpoint: `http://your-host:8080/mcp`
