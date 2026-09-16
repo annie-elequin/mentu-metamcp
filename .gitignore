@@ -1,0 +1,28 @@
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Real config with secrets
+config/.mcp.json
+
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

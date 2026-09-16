@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  metamcp:
+    build:
+      context: ./metamcp
+      dockerfile: Dockerfile
+    container_name: metamcp
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - METAMCP_HTTP_BEARER_TOKEN=${METAMCP_HTTP_BEARER_TOKEN}
+      - METAMCP_ALLOWED_ORIGINS=${METAMCP_ALLOWED_ORIGINS:-}
+    volumes:
+      - config:/config
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: metamcp-ui
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - METAMCP_HTTP_BEARER_TOKEN=${METAMCP_HTTP_BEARER_TOKEN}
+    volumes:
+      - config:/config
+    depends_on:
+      - metamcp
+
+volumes:
+  config:

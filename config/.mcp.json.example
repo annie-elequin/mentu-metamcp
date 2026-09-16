@@ -1,0 +1,53 @@
+{
+  "mcpServers": {
+    "home-assistant-example": {
+      "url": "http://your-homeassistant.local:8123/mcp",
+      "transportType": "http",
+      "headers": {
+        "Authorization": "Bearer ${HOME_ASSISTANT_TOKEN}"
+      }
+    },
+    "portainer-example": {
+      "url": "https://portainer.example.com/api/mcp",
+      "transportType": "http",
+      "headers": {
+        "X-API-Key": "${PORTAINER_API_KEY}"
+      }
+    },
+    "bookstack-example": {
+      "url": "https://bookstack.example.com/api/mcp",
+      "transportType": "http",
+      "headers": {
+        "Authorization": "Token ${BOOKSTACK_TOKEN_ID}:${BOOKSTACK_TOKEN_SECRET}"
+      }
+    },
+    "memos-example": {
+      "url": "https://memos.example.com/api/v1/mcp",
+      "transportType": "http",
+      "headers": {
+        "Authorization": "Bearer ${MEMOS_TOKEN}"
+      }
+    },
+    "tidyhq-example": {
+      "url": "https://api.tidyhq.com/v1/mcp",
+      "transportType": "http",
+      "headers": {
+        "Authorization": "Bearer ${TIDYHQ_TOKEN}"
+      }
+    },
+    "synology-example": {
+      "url": "https://synology.example.com:5001/webapi/mcp",
+      "transportType": "http",
+      "headers": {
+        "X-SYNO-TOKEN": "${SYNOLOGY_TOKEN}"
+      }
+    },
+    "custom-http-mcp": {
+      "url": "https://your-custom-mcp.example.com/mcp",
+      "transportType": "http",
+      "headers": {
+        "Authorization": "Bearer ${CUSTOM_MCP_TOKEN}"
+      }
+    }
+  }
+}
