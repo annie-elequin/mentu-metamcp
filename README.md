@@ -23,6 +23,8 @@ MetaMCP is perfect for long-tail services that have HTTP MCP endpoints:
 - Synology
 - Custom internal services
 
+**Stdio MCPs via uvx**: The gateway image includes `uv` and `uvx`, enabling stdio child MCPs like the official Portainer MCP (`uvx --from mcp-portainer portainer-mcp`). Configure these as stdio children in `.mcp.json` using MetaMCP's child server syntax.
+
 **Do NOT proxy** through MetaMCP:
 - Affine
 - Fastmail
@@ -170,6 +172,7 @@ See `config/.mcp.json.example` for more examples.
 ### `mentu-metamcp`
 - Node 20 Alpine
 - Runs `@mentu/metamcp@1.0.0`
+- Includes `uv` and `uvx` for stdio child MCPs (e.g., `uvx --from mcp-portainer portainer-mcp`)
 - Exposes HTTP transport on port 8080
 - Watches `/config/.mcp.json` for changes
 - Fails closed if `METAMCP_HTTP_BEARER_TOKEN` is not set
