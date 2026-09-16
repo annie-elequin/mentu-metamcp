@@ -16,13 +16,14 @@ fi
 # Build command with optional CORS origins
 CMD="metamcp --transport http --host 0.0.0.0 --port 8080 --config /config/.mcp.json"
 
-# Add allow-origin flags if METAMCP_ALLOWED_ORIGINS is set
+# Add allow-origin flags if METAMCP_ALLOWED_ORIGINS is set (POSIX sh — no bash arrays / <<<)
 if [ -n "$METAMCP_ALLOWED_ORIGINS" ]; then
-  # Split CSV and add --allow-origin for each
-  IFS=',' read -ra ORIGINS <<< "$METAMCP_ALLOWED_ORIGINS"
-  for origin in "${ORIGINS[@]}"; do
+  _origins="$METAMCP_ALLOWED_ORIGINS,"
+  while [ -n "$_origins" ]; do
+    origin=${_origins%%,*}
+    _origins=${_origins#*,}
     # Trim whitespace
-    origin=$(echo "$origin" | xargs)
+    origin=$(printf '%s' "$origin" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     if [ -n "$origin" ]; then
       CMD="$CMD --allow-origin $origin"
     fi
