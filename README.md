@@ -34,6 +34,22 @@ MetaMCP is perfect for long-tail services that have HTTP MCP endpoints:
 
 These first-party services work better as direct MCP connections.
 
+## Config UI Features
+
+The web-based config editor includes:
+
+- **Server Health Monitor** - Visual dashboard showing reachability status (green/red) for each configured MCP server
+- **Tool Discovery** - Lists available tools from each reachable server with descriptions
+- **CodeMirror Editor** - Enhanced JSON editor with:
+  - Line numbers
+  - Collapsible sections (fold/unfold JSON objects)
+  - Syntax highlighting
+  - Auto-formatting
+- **Bearer Token Authentication** - Secure access control (same token as MetaMCP)
+- **Auto-reload** - MetaMCP watches for config changes and reloads automatically
+
+**Server Status Panel**: After loading your config, click **Refresh** to probe each configured server. The UI attempts a lightweight MCP handshake (`tools/list`) with a 5-second timeout. Stdio servers show as "not probeable from UI" since they can't be reached over HTTP.
+
 ## Quick Start (Local Development)
 
 ### Prerequisites
@@ -179,10 +195,15 @@ See `config/.mcp.json.example` for more examples.
 
 ### `mentu-metamcp-ui`
 - Node 20 Alpine
-- Simple Express server + static HTML
+- Express server with CodeMirror-based JSON editor
 - Bearer token authentication (same token as MetaMCP)
-- Load/save API for `/config/.mcp.json`
+- API endpoints:
+  - `GET /api/config` - Load configuration file
+  - `POST /api/config` - Save configuration file
+  - `GET /api/servers/status` - Probe each MCP server for health and tools
+- Server health monitoring with lightweight MCP handshake
 - JSON validation and formatting
+- Line numbers and collapsible JSON sections
 
 ### Shared Volume
 - Named volume `config`
