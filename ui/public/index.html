@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MetaMCP Config Editor</title>
+    
+    <!-- CodeMirror 5 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.css">
+    
     <style>
         * {
             margin: 0;
@@ -40,6 +46,126 @@
         .editor-container {
             padding: 20px;
         }
+        .server-status-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+        .server-status-section h2 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .server-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 12px;
+        }
+        .server-card {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            border: 2px solid #e0e0e0;
+        }
+        .server-card.reachable {
+            border-color: #27ae60;
+        }
+        .server-card.unreachable {
+            border-color: #e74c3c;
+        }
+        .server-card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .server-status-badge {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .server-status-badge.reachable {
+            background: #27ae60;
+        }
+        .server-status-badge.unreachable {
+            background: #e74c3c;
+        }
+        .server-name {
+            font-weight: 600;
+            font-size: 14px;
+            flex: 1;
+            word-break: break-word;
+        }
+        .server-transport {
+            font-size: 11px;
+            color: #7f8c8d;
+            background: #ecf0f1;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .server-error {
+            font-size: 12px;
+            color: #e74c3c;
+            margin-top: 4px;
+        }
+        .server-tools {
+            margin-top: 8px;
+        }
+        .server-tools summary {
+            cursor: pointer;
+            font-size: 12px;
+            color: #3498db;
+            user-select: none;
+        }
+        .server-tools summary:hover {
+            color: #2980b9;
+        }
+        .tools-list {
+            margin-top: 6px;
+            padding-left: 0;
+            list-style: none;
+        }
+        .tool-item {
+            font-size: 12px;
+            padding: 4px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .tool-item:last-child {
+            border-bottom: none;
+        }
+        .tool-name {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        .tool-description {
+            color: #7f8c8d;
+            margin-left: 4px;
+        }
+        .no-servers {
+            text-align: center;
+            color: #7f8c8d;
+            padding: 20px;
+            font-size: 14px;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
         .toolbar {
             display: flex;
             gap: 10px;
@@ -73,19 +199,13 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
-        textarea {
-            width: 100%;
-            height: 500px;
-            padding: 15px;
+        .CodeMirror {
             border: 2px solid #ddd;
             border-radius: 4px;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            height: 500px;
             font-size: 13px;
-            line-height: 1.5;
-            resize: vertical;
         }
-        textarea:focus {
-            outline: none;
+        .CodeMirror-focused {
             border-color: #3498db;
         }
         .message {
@@ -153,6 +273,16 @@
             
             <div id="message" class="message hidden"></div>
             
+            <div class="server-status-section">
+                <h2>
+                    <span>MCP Server Status</span>
+                    <button id="refreshStatusBtn" class="secondary" style="padding: 6px 12px; font-size: 12px;">Refresh</button>
+                </h2>
+                <div id="serverStatusContainer">
+                    <div class="no-servers">Click 'Load Config' first, then 'Refresh' to check server health</div>
+                </div>
+            </div>
+            
             <div class="toolbar">
                 <button id="loadBtn" class="primary">Load Config</button>
                 <button id="saveBtn" class="primary">Save Config</button>
@@ -160,18 +290,42 @@
                 <button id="validateBtn" class="secondary">Validate JSON</button>
             </div>
             
-            <textarea id="editor" placeholder="Click 'Load Config' to load .mcp.json"></textarea>
+            <div id="editor"></div>
         </div>
     </div>
 
+    <!-- CodeMirror 5 JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldcode.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/brace-fold.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/comment-fold.js"></script>
+
     <script>
-        const editor = document.getElementById('editor');
+        // Initialize CodeMirror
+        const editorElement = document.getElementById('editor');
+        const cmEditor = CodeMirror(editorElement, {
+            mode: { name: "javascript", json: true },
+            theme: "default",
+            lineNumbers: true,
+            lineWrapping: true,
+            indentUnit: 2,
+            tabSize: 2,
+            indentWithTabs: false,
+            foldGutter: true,
+            gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+            placeholder: "Click 'Load Config' to load .mcp.json"
+        });
+
         const bearerTokenInput = document.getElementById('bearerToken');
         const messageEl = document.getElementById('message');
         const loadBtn = document.getElementById('loadBtn');
         const saveBtn = document.getElementById('saveBtn');
         const formatBtn = document.getElementById('formatBtn');
         const validateBtn = document.getElementById('validateBtn');
+        const refreshStatusBtn = document.getElementById('refreshStatusBtn');
+        const serverStatusContainer = document.getElementById('serverStatusContainer');
 
         function showMessage(text, type = 'info') {
             messageEl.textContent = text;
@@ -180,6 +334,81 @@
             setTimeout(() => {
                 messageEl.classList.add('hidden');
             }, 5000);
+        }
+
+        function renderServerStatus(servers) {
+            if (!servers || servers.length === 0) {
+                serverStatusContainer.innerHTML = '<div class="no-servers">No MCP servers configured</div>';
+                return;
+            }
+
+            const serverCards = servers.map(server => {
+                const reachableClass = server.reachable ? 'reachable' : 'unreachable';
+                const statusBadgeClass = server.reachable ? 'reachable' : 'unreachable';
+                
+                let toolsHtml = '';
+                if (server.error) {
+                    toolsHtml = `<div class="server-error">${server.error}</div>`;
+                } else if (server.tools && server.tools.length > 0) {
+                    const toolsList = server.tools.map(tool => `
+                        <li class="tool-item">
+                            <span class="tool-name">${tool.name}</span>
+                            ${tool.description ? `<span class="tool-description">- ${tool.description}</span>` : ''}
+                        </li>
+                    `).join('');
+                    toolsHtml = `
+                        <details class="server-tools">
+                            <summary>Tools (${server.tools.length})</summary>
+                            <ul class="tools-list">${toolsList}</ul>
+                        </details>
+                    `;
+                } else if (server.reachable) {
+                    toolsHtml = '<div class="server-error">Reachable but no tools found</div>';
+                }
+
+                return `
+                    <div class="server-card ${reachableClass}">
+                        <div class="server-card-header">
+                            <span class="server-status-badge ${statusBadgeClass}"></span>
+                            <span class="server-name">${server.name}</span>
+                            <span class="server-transport">${server.transportType}</span>
+                        </div>
+                        ${toolsHtml}
+                    </div>
+                `;
+            }).join('');
+
+            serverStatusContainer.innerHTML = `<div class="server-cards">${serverCards}</div>`;
+        }
+
+        async function refreshServerStatus() {
+            const authHeader = getAuthHeader();
+            if (!authHeader) return;
+
+            refreshStatusBtn.disabled = true;
+            refreshStatusBtn.innerHTML = '<span class="loading-spinner"></span>';
+
+            try {
+                const response = await fetch('/api/servers/status', {
+                    headers: {
+                        'Authorization': authHeader
+                    }
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                renderServerStatus(data.servers);
+                showMessage(`Checked ${data.servers.length} server(s)`, 'success');
+            } catch (error) {
+                showMessage(`Failed to check server status: ${error.message}`, 'error');
+            } finally {
+                refreshStatusBtn.disabled = false;
+                refreshStatusBtn.textContent = 'Refresh';
+            }
         }
 
         function getAuthHeader() {
@@ -209,7 +438,7 @@
                 }
                 
                 const data = await response.json();
-                editor.value = data.content;
+                cmEditor.setValue(data.content);
                 showMessage('Config loaded successfully', 'success');
             } catch (error) {
                 showMessage(`Failed to load config: ${error.message}`, 'error');
@@ -222,7 +451,7 @@
             const authHeader = getAuthHeader();
             if (!authHeader) return;
 
-            const content = editor.value.trim();
+            const content = cmEditor.getValue().trim();
             if (!content) {
                 showMessage('Config content cannot be empty', 'error');
                 return;
@@ -263,11 +492,11 @@
 
         function formatJSON() {
             try {
-                const content = editor.value.trim();
+                const content = cmEditor.getValue().trim();
                 if (!content) return;
                 
                 const parsed = JSON.parse(content);
-                editor.value = JSON.stringify(parsed, null, 2);
+                cmEditor.setValue(JSON.stringify(parsed, null, 2));
                 showMessage('JSON formatted successfully', 'success');
             } catch (e) {
                 showMessage(`Cannot format: ${e.message}`, 'error');
@@ -276,7 +505,7 @@
 
         function validateJSON() {
             try {
-                const content = editor.value.trim();
+                const content = cmEditor.getValue().trim();
                 if (!content) {
                     showMessage('Editor is empty', 'error');
                     return;
@@ -294,6 +523,7 @@
         saveBtn.addEventListener('click', saveConfig);
         formatBtn.addEventListener('click', formatJSON);
         validateBtn.addEventListener('click', validateJSON);
+        refreshStatusBtn.addEventListener('click', refreshServerStatus);
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {

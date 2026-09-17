@@ -61,8 +61,15 @@ Container listen ports stay fixed (`8080` / `3000`); only the published host por
 2. Open `http://your-portainer-host:<UI_PORT>` in your browser
 3. Enter your bearer token (same as `METAMCP_HTTP_BEARER_TOKEN`)
 4. Click **Load Config** to load the current `.mcp.json`
-5. Edit your MCP server configurations
-6. Click **Save Config** - MetaMCP will reload automatically
+5. Click **Refresh** in the Server Status panel to check health and discover tools from each configured MCP
+6. Edit your configurations using the CodeMirror editor with line numbers and collapsible sections
+7. Click **Save Config** - MetaMCP will reload automatically
+
+**UI Features:**
+- **Server Health Monitor**: Visual status (green/red) showing which servers are reachable
+- **Tool Discovery**: Lists available tools from each reachable server
+- **CodeMirror Editor**: Line numbers, JSON folding, syntax highlighting
+- **Format/Validate**: Built-in JSON formatting and validation
 
 ## Using MetaMCP with MCP Clients
 
