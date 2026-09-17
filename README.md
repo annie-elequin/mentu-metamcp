@@ -40,6 +40,7 @@ These first-party services work better as direct MCP connections.
 
 - Docker & Docker Compose
 - Node.js 20+ (for local development without Docker)
+- External Docker network `mcp` must exist: `docker network create mcp` (one-time setup; allows MetaMCP to reach child HTTP MCPs via Docker DNS)
 
 ### 1. Clone and Configure
 
@@ -65,7 +66,8 @@ docker compose up -d
 
 This will:
 - Build both images (`mentu-metamcp` and `mentu-metamcp-ui`)
-- Create a shared `config` volume
+- Create a shared config volume (named `mentu-metamcp-config` by default, or set `MENTU_CONFIG_PATH` in `.env` for a host path)
+- Join external Docker network `mcp` (allows MetaMCP to reach child HTTP MCPs via Docker DNS)
 - Start both services with restart policies
 - Expose MetaMCP on port 8080 and UI on port 3000
 
@@ -196,6 +198,9 @@ See `config/.mcp.json.example` for more examples.
 
 ### Optional
 - `METAMCP_ALLOWED_ORIGINS` - Comma-separated CORS origins (e.g., `https://example.com,https://app.example.com`)
+- `MENTU_CONFIG_PATH` - Config volume path (default: named volume `mentu-metamcp-config`). Set to a host path for NAS/persistent storage (e.g., `/volume1/docker/mentu/config`)
+- `METAMCP_PORT` - Host port for MetaMCP (default `8080`)
+- `UI_PORT` - Host port for config UI (default `3000`)
 
 ## Development
 

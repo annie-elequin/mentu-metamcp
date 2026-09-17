@@ -7,6 +7,7 @@ Deploy MetaMCP as a Git-based stack in Portainer.
 - Portainer instance with access to Docker or Swarm environment
 - Git repository access (this repo: `https://github.com/annie-elequin/mentu-metamcp`)
 - A secure bearer token for authentication
+- External Docker network `mcp` must exist: `docker network create mcp` (one-time setup; allows MetaMCP to reach child HTTP MCPs via Docker DNS)
 
 ## Deployment Steps
 
@@ -41,6 +42,7 @@ Add the following environment variables in the **Environment variables** section
 - `METAMCP_ALLOWED_ORIGINS`: Comma-separated CORS origins (e.g., `https://example.com,https://app.example.com`)
 - `METAMCP_PORT`: Host port mapped to MetaMCP (default `8080`). Set this in the stack env when host port 8080 already clashes.
 - `UI_PORT`: Host port mapped to the config UI (default `3000`). Set this in the stack env when host port 3000 already clashes.
+- `MENTU_CONFIG_PATH`: Config volume path (default: named volume `mentu-metamcp-config`). Set to a host path for NAS/persistent storage (e.g., `/volume1/docker/mentu/config`).
 
 Container listen ports stay fixed (`8080` / `3000`); only the published host ports change.
 

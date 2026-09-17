@@ -13,7 +13,7 @@ services:
       - METAMCP_HTTP_BEARER_TOKEN=${METAMCP_HTTP_BEARER_TOKEN}
       - METAMCP_ALLOWED_ORIGINS=${METAMCP_ALLOWED_ORIGINS:-}
     volumes:
-      - config:/config
+      - ${MENTU_CONFIG_PATH:-mentu-metamcp-config}:/config
     healthcheck:
       # /mcp is the real gateway path (no /health). Missing bearer often returns 401/405/406 — still "up".
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8080/mcp', (r) => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
@@ -33,9 +33,11 @@ services:
     environment:
       - METAMCP_HTTP_BEARER_TOKEN=${METAMCP_HTTP_BEARER_TOKEN}
     volumes:
-      - config:/config
+      - ${MENTU_CONFIG_PATH:-mentu-metamcp-config}:/config
     depends_on:
       - mentu-metamcp
 
-volumes:
-  config:
+networks:
+  default:
+    name: mcp
+    external: true
