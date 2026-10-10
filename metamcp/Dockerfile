@@ -3,6 +3,11 @@ FROM ghcr.io/astral-sh/uv:latest AS uv
 
 FROM node:20-alpine
 
+# Build version arg (forces rebuild when changed)
+ARG BUILD_VERSION=dev
+LABEL build.version="${BUILD_VERSION}"
+LABEL build.date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 WORKDIR /app
 
 # Copy uv and uvx binaries from Astral image

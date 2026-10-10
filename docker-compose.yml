@@ -5,7 +5,10 @@ services:
     build:
       context: ./metamcp
       dockerfile: Dockerfile
-    pull_policy: build  # Force rebuild on Portainer redeploy
+      args:
+        BUILD_VERSION: "7"
+    image: mentu-metamcp:7
+    pull_policy: build
     container_name: mentu-metamcp
     restart: unless-stopped
     ports:
@@ -29,7 +32,10 @@ services:
     build:
       context: ./ui
       dockerfile: Dockerfile
-    pull_policy: build  # Force rebuild on Portainer redeploy
+      args:
+        BUILD_VERSION: "7"
+    image: mentu-metamcp-ui:7
+    pull_policy: build
     container_name: mentu-metamcp-ui
     restart: unless-stopped
     ports:
