@@ -2,6 +2,8 @@
 
 Portainer Git stack for [Mentu MetaMCP](https://github.com/mentu-ai/metamcp) - aggregate long-tail HTTP MCP servers behind one endpoint with a simple web-based config editor.
 
+> **🔧 Compatibility Fix**: This fork includes an SDK upgrade to fix connection issues with Python MCP SDK 2.2+ servers (like mcp4immich). See [SDK_COMPATIBILITY_FIX.md](SDK_COMPATIBILITY_FIX.md) for details.
+
 ## What is this?
 
 This stack provides:
