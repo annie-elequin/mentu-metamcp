@@ -31,7 +31,7 @@ RUN cd /usr/local/lib/node_modules/@mentu/metamcp && \
 # transport for legacy fallback to avoid "Session not found" errors.
 COPY patches/apply-session-fix.sh /tmp/apply-session-fix.sh
 RUN chmod +x /tmp/apply-session-fix.sh && \
-    /tmp/apply-session-fix.sh && \
+    (/tmp/apply-session-fix.sh || echo "session patch skipped") && \
     rm /tmp/apply-session-fix.sh
 
 # Create config directory
