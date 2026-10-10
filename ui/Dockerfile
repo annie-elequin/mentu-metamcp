@@ -1,5 +1,9 @@
 FROM node:20-alpine
 
+# Build version arg (forces rebuild when changed)
+ARG BUILD_VERSION=dev
+LABEL build.version="${BUILD_VERSION}"
+
 WORKDIR /app
 
 # Copy package files
