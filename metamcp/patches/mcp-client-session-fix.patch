@@ -1,0 +1,47 @@
+--- a/dist/mcp-client.js
++++ b/dist/mcp-client.js
+@@ -135,13 +135,40 @@
+         });
+         this.transport = framed;
+         this.authProvider?.dispose();
+         return;
+     }
+-    // Logged unconditionally: a clean MethodNotFound carries no `reason`, and
+-    // leaving that case silent made it impossible to tell "negotiated legacy"
+-    // apart from "never connected" when reading a live gateway's output.
++    // BUGFIX: If probe failed with a transport error (not just MethodNotFound),
++    // the transport may have a stale session ID from mcp4immich or other dual-era
++    // servers. StreamableHTTPClientTransport stores session IDs from response headers,
++    // and when the probe fails, that session may be terminated on the server.
++    // Create a FRESH transport for the legacy fallback to avoid "Session not found" errors.
++    if (probe.reason && probe.reason.toLowerCase().includes('error')) {
++        log('info', 'recreating transport for legacy fallback after probe error', {
++            server: this.config.name,
++        });
++        // Close the probed transport
++        try {
++            await framed.close();
++        }
++        catch (e) {
++            // Ignore close errors
++        }
++        // Create fresh transport (same config, no stale session)
++        if (this.config.transport === 'http' && this.config.url) {
++            this.transport = new StreamableHTTPClientTransport(new URL(this.config.url), { requestInit: { headers: this.config.headers ?? {} } });
++        }
++        else if (this.config.transport === 'sse' && this.config.url) {
++            this.transport = new SSEClientTransport(new URL(this.config.url), { requestInit: { headers: this.config.headers ?? {} } });
++        }
++        // stdio doesn't have session state, so no need to recreate
++    }
++    else {
++        // Probe succeeded with MethodNotFound or no error - safe to reuse transport
++        this.transport = framed;
++    }
+     log('info', 'child using the legacy era', {
+         server: this.config.name,
+         ...(probe.reason ? { reason: probe.reason } : {}),
+     });
+-    this.transport = framed;
+     this.client = new Client({
+         name: 'metamcp',

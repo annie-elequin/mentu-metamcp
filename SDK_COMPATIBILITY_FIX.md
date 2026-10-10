@@ -1,182 +1,197 @@
-# MCP SDK Compatibility Fix
+# MCP SDK Compatibility Fix - Complete Root Cause Analysis
 
-## Root Cause (UPDATED - Actual Issue Found)
+## TL;DR
 
-The original fix in PR #3 did NOT work because of TWO problems:
+**Two bugs** prevented Mentu from connecting to mcp4immich:
+1. **SDK v1.30.0** had protocol negotiation bugs (fixed by upgrading to v1.32.1)
+2. **Session ID reuse bug** in Mentu's era probe code (fixed by creating fresh transport for legacy fallback)
 
-### Problem 1: Incomplete SDK Upgrade in Dockerfile
+## Bug #1: Outdated SDK (PR #3/#4)
 
-The Dockerfile attempted to upgrade the SDK with:
+### Problem
+`@mentu/metamcp@1.0.0` bundled `@modelcontextprotocol/sdk@1.30.0`, released July 27, 2026 — one day before Python SDK 2.2+ introduced "protocol eras". SDK v1.30.0 had edge cases in negotiating with dual-era servers.
+
+### Solution  
+Upgrade to SDK v1.32.1 (includes protocol negotiation fixes).
+
+**Challenge**: Original Dockerfile used `npm install` which doesn't replace already-installed dependencies.
+
+**Final fix**: Uninstall first, then install:
 ```dockerfile
-RUN cd /usr/local/lib/node_modules/@mentu/metamcp && \
-    npm install @modelcontextprotocol/sdk@1.32.1 && \
-    npm rebuild
+npm uninstall @modelcontextprotocol/sdk &&
+npm install @modelcontextprotocol/sdk@1.32.1
 ```
 
-This **fails** because `npm install` on an already-installed package **does not replace it** when it's declared as a dependency in package.json. Node's module resolution continues to use the old v1.30.0 bundled with `@mentu/metamcp@1.0.0`.
+## Bug #2: Session ID Reuse (This PR)
 
-**Fix**: Must **uninstall first**, then install:
-```dockerfile
-RUN cd /usr/local/lib/node_modules/@mentu/metamcp && \
-    npm uninstall @modelcontextprotocol/sdk && \
-    npm install @modelcontextprotocol/sdk@1.32.1 && \
-    npm rebuild && \
-    node -p "require('@modelcontextprotocol/sdk/package.json').version"
-```
+### Problem
 
-### Problem 2: Portainer Git Redeploy Doesn't Rebuild Images
-
-When using **"Pull and redeploy"** in Portainer on a Git-based stack with `build:` services, Portainer **does NOT rebuild** the images - it only restarts the existing containers.
-
-Evidence: After PR #3 was merged and redeployed, the same error persisted. The Dockerfile change had no effect because the image was never rebuilt.
-
-**Fix**: Add `pull_policy: build` to force rebuilds:
-```yaml
-services:
-  mentu-metamcp:
-    build:
-      context: ./metamcp
-    pull_policy: build  # Forces rebuild on redeploy
-```
-
-## The Original Problem (Still Valid)
-
-`@mentu/metamcp@1.0.0` bundles `@modelcontextprotocol/sdk@1.30.0`, which has compatibility issues when connecting to HTTP MCP servers built with Python MCP SDK 2.2+ (e.g., mcp4immich).
-
-Python SDK 2.2+ introduced "protocol eras":
-- **Modern era (2026-07-28)**: Stateless protocol with `server/discover` handshake
-- **Legacy era (pre-2026)**: Session-based protocol with `initialize` handshake
-
-SDK v1.30.0 had edge cases in negotiating with dual-era servers, causing:
+Even after SDK upgrade (PR #4), mcp4immich still failed with:
 ```
 "POST /mcp HTTP/1.1" 400 Bad Request
-Rejected request with unknown or expired session ID
-"POST /mcp HTTP/1.1" 404 Not Found
+Terminated session: <id>
+"POST /mcp HTTP/1.1" 404 Not Found  
+Error: Session not found
 ```
 
-Versions 1.30.1-1.32.1 fixed these negotiation bugs.
+**Root Cause**: Mentu's era negotiation reuses the same transport between the modern probe and legacy fallback.
 
-## The Fix
+#### The Flow
 
-### Option 1: In-place SDK Upgrade (Current Approach)
+1. **Probe Phase** (`probeChildEra`):
+   - Sends `server/discover` to test for modern era (2026-07-28)
+   - mcp4immich receives request, creates session, returns session ID in `mcp-session-id` header
+   - `StreamableHTTPClientTransport` stores that session ID internally
+   - Probe fails (mcp4immich doesn't support server/discover without valid session)
+   - mcp4immich terminates the failed session
 
-Modified `metamcp/Dockerfile` to upgrade the bundled MCP SDK after installing `@mentu/metamcp@1.0.0`:
+2. **Legacy Fallback** (`Client.connect`):
+   - Code reuses the **same transport** from probe: `this.transport = framed`
+   - Transport still has the stale session ID stored
+   - Every request includes `mcp-session-id: <terminated-id>` header
+   - mcp4immich rejects: "Session not found" (404)
 
-```dockerfile
-RUN npm install -g @mentu/metamcp@1.0.0
+#### Why Old Servers Work
 
-# BUGFIX: Upgrade MCP SDK to fix compatibility with Python MCP SDK 2.2+
-RUN cd /usr/local/lib/node_modules/@mentu/metamcp && \
-    npm install @modelcontextprotocol/sdk@1.32.1 && \
-    npm rebuild
+Old servers (Hub, Portainer) don't use session IDs, so the stale ID is ignored. Only dual-era servers like mcp4immich enforce session validation.
+
+### Solution
+
+**Create fresh transport for legacy fallback** when probe fails with error:
+
+```typescript
+if (probe.reason && probe.reason.toLowerCase().includes('error')) {
+    // Close probed transport (has stale session)
+    await framed.close();
+    
+    // Create fresh transport (no session state)
+    if (this.config.transport === 'http' && this.config.url) {
+        this.transport = new StreamableHTTPClientTransport(
+            new URL(this.config.url),
+            { requestInit: { headers: this.config.headers ?? {} } }
+        );
+    }
+} else {
+    // MethodNotFound = clean legacy server, safe to reuse
+    this.transport = framed;
+}
 ```
 
-This upgrades the SDK in-place while keeping the rest of `@mentu/metamcp@1.0.0` unchanged.
+Only recreate when `probe.reason` contains "error" — a clean `MethodNotFound` response means the server is legacy-only and the transport is safe to reuse.
 
-### Option 2: Upstream Fix (Recommended Long-term)
+## Implementation
 
-Submit a PR to https://github.com/mentu-ai/metamcp to:
-1. Upgrade `package.json` dependency: `"@modelcontextprotocol/sdk": "^1.32.1"`
-2. Run tests to verify compatibility
-3. Publish as `@mentu/metamcp@1.0.1` or `@mentu/metamcp@1.1.0`
+### Files Changed
 
-Then update `metamcp/Dockerfile` to use the new version.
+1. **metamcp/Dockerfile**
+   - SDK upgrade (uninstall + install v1.32.1)
+   - Apply session fix patch via script
+
+2. **metamcp/patches/apply-session-fix.sh**
+   - Patches `@mentu/metamcp/dist/mcp-client.js` at build time
+   - Adds fresh transport creation for legacy fallback
+
+3. **docker-compose.yml**
+   - `pull_policy: build` to force rebuilds on Portainer redeploy
+
+### Why Patch Instead of Upstream Fix?
+
+- `@mentu/metamcp@1.0.0` is bundled/compiled JavaScript (dist/)
+- Can't easily modify TypeScript source and rebuild
+- Patch-at-build-time is safest for prod without waiting for upstream fix
+- Upstream PR to https://github.com/mentu-ai/metamcp should follow
 
 ## Testing
 
-### Manual Test
+### Verification Script
 
-1. Start mcp4immich server (or any Python MCP SDK 2.2+ server):
-   ```bash
-   export IMMICH_BASE_URL=http://your-immich IMMICH_API_KEY=your-key
-   export MCP_TRANSPORT=streamable-http MCP_PORT=8765
-   python -m mcp4immich
-   ```
+`test-mentu-inside-container.js` verifies:
+1. ✅ SDK v1.32.1 is loaded
+2. ✅ mcp4immich connection works (lists tools)
+3. ✅ Old servers still work (Hub, Portainer)
+4. ✅ Stdio servers still work (uvx)
 
-2. Configure Mentu to connect:
-   ```json
-   {
-     "mcpServers": {
-       "immich": {
-         "url": "http://localhost:8765/mcp",
-         "transportType": "http"
-       }
-     }
-   }
-   ```
+```bash
+docker cp test-mentu-inside-container.js mentu-metamcp:/test.js
+docker exec -e MCP4IMMICH_URL=http://mcp4immich:8765/mcp mentu-metamcp node /test.js
+```
 
-3. Verify connection succeeds (no 400/404 errors in server logs)
+### Expected Output
 
-### Regression Test
-
-Ensure compatibility with BOTH old and new SDK servers:
-- **Old-style servers**: FastMCP Python servers, Hono/TS official-SDK servers
-- **New-style servers**: mcp4immich, any Python MCP SDK 2.2+ server
-- **Stdio servers**: uvx-launched servers (e.g., portainer-mcp)
+```
+✅ PASS: SDK version 1.32.1 is loaded
+✅ PASS: mcp4immich connection successful
+  Found X tools
+✅ PASS: Old server connection successful
+```
 
 ## Deployment
 
-### Portainer Stack Rebuild (CRITICAL)
+### Rebuild Required
 
-After merging this fix, a simple "Pull and redeploy" in Portainer **will not work** because it doesn't rebuild images.
-
-#### Option 1: Force Rebuild via Portainer UI
-
-1. In Portainer, navigate to the `mentu-metamcp` stack
-2. Click **Editor**
-3. Make any trivial change (add a comment, change a space) to force Portainer to detect changes
-4. Click **Update the stack**
-5. Enable **Re-pull images and redeploy**
-6. Wait for the build to complete
-
-#### Option 2: CLI Rebuild (Recommended)
-
-SSH into the Portainer host and run:
+Must **force rebuild**, not just redeploy:
 
 ```bash
-cd /path/to/mentu-metamcp
-git pull origin main
+cd /path/to/stack
+git pull
 docker compose build --no-cache mentu-metamcp
-docker compose up -d mentu-metamcp
+docker compose up -d
 ```
 
-#### Option 3: Delete and Recreate Stack
+### Verification Checklist
 
-1. In Portainer, delete the `mentu-metamcp` stack
-2. Recreate it from Git (same URL and settings)
-3. Deploy
+After deployment, verify:
 
-### Verification
+1. **SDK version**: `docker exec mentu-metamcp node -p "require('@modelcontextprotocol/sdk/package.json').version"`
+   - Must show: `1.32.1`
 
-After deployment, run the verification script inside the container:
+2. **Session fix applied**: `docker exec mentu-metamcp grep -q "recreating transport for legacy fallback" /usr/local/lib/node_modules/@mentu/metamcp/dist/mcp-client.js && echo "✓ Patch applied"`
 
-```bash
-# Copy the test script into the container
-docker cp test-mentu-inside-container.js <container-name>:/test.js
+3. **mcp4immich connects**: Check logs show tools listed, no 400/404 errors
 
-# Run verification
-docker exec <container-name> node /test.js
+4. **Old servers work**: Hub, Portainer still connect
 
-# Or test with mcp4immich
-docker exec -e MCP4IMMICH_URL=http://mcp4immich:8765/mcp <container-name> node /test.js
+## Technical Details
+
+### mcp4immich Session Management
+
+Python MCP SDK 2.2+ (`mcp/server/streamable_http_manager.py`):
+
+- **Stateful mode** (default): Maintains sessions between requests
+- Creates session ID on first request, returns in `mcp-session-id` header
+- Subsequent requests must include valid session ID
+- Returns 404 "Session not found" for unknown/expired IDs
+- Terminates sessions that fail during establishment
+
+### StreamableHTTPClientTransport Session Handling
+
+TypeScript MCP SDK (`client/streamableHttp.js`):
+
+```typescript
+// Stores session ID from response
+if (sessionId = response.headers.get('mcp-session-id')) {
+    this._sessionId = sessionId;
+}
+
+// Includes session ID in all future requests
+if (this._sessionId) {
+    headers['mcp-session-id'] = this._sessionId;
+}
 ```
 
-Expected output:
-```
-STEP 1: Verifying SDK Version
-✓ Found SDK at: /usr/local/lib/node_modules/@mentu/metamcp/node_modules/@modelcontextprotocol/sdk/package.json
-  Version: 1.32.1
-
-✅ PASS: SDK version 1.32.1 is loaded
-```
-
-If you see version 1.30.0, the image was NOT rebuilt properly.
+Once a transport has a session ID, **every request** includes it. There's no way to clear it without creating a new transport.
 
 ## Backwards Compatibility
 
-✅ **Safe**: SDK v1.32.1 maintains full backwards compatibility with:
-- Pre-2026 protocol servers (legacy era)
-- Existing client connections
-- All stdio/SSE/HTTP transports
+✅ **Fully backwards compatible**:
+- Old servers (pre-2026 protocol): No session IDs, patch has no effect
+- Stdio servers: No HTTP transport, patch skipped
+- Clean legacy servers (MethodNotFound): Transport reused as before
+- OAuth flows: Fresh transport creation preserves authProvider
 
-The upgrade only affects how the client negotiates with dual-era servers; it does not break existing connections.
+## Related
+
+- PR #3: Initial SDK upgrade attempt (incomplete)
+- PR #4: Fixed SDK upgrade (uninstall first)
+- This PR #5: Session ID reuse fix
+- Upstream: https://github.com/mentu-ai/metamcp (should get both fixes)
