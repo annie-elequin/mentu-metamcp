@@ -6,8 +6,8 @@ services:
       context: ./metamcp
       dockerfile: Dockerfile
       args:
-        BUILD_VERSION: "7"
-    image: mentu-metamcp:7
+        BUILD_VERSION: "8"
+    image: mentu-metamcp:8
     pull_policy: build
     container_name: mentu-metamcp
     restart: unless-stopped
@@ -33,8 +33,8 @@ services:
       context: ./ui
       dockerfile: Dockerfile
       args:
-        BUILD_VERSION: "7"
-    image: mentu-metamcp-ui:7
+        BUILD_VERSION: "8"
+    image: mentu-metamcp-ui:8
     pull_policy: build
     container_name: mentu-metamcp-ui
     restart: unless-stopped
