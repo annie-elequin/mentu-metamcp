@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "immich": {
+      "url": "http://mcp4immich:8765/mcp",
+      "transportType": "http"
+    }
+  }
+}

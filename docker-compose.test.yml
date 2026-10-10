@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  # mcp4immich server (Python MCP SDK 2.2+)
+  mcp4immich:
+    image: ghcr.io/joeru/mcp4immich:1.1.0
+    container_name: test-mcp4immich
+    environment:
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8765
+      IMMICH_PROFILE: read_only
+      IMMICH_BASE_URL: http://stub.local
+      IMMICH_API_KEY: test-key-12345
+      IMMICH_ALLOW_HTTP: "true"
+    ports:
+      - "8765:8765"
+    networks:
+      - test-mcp
+
+  # Mentu MetaMCP gateway (built from this repo)
+  mentu:
+    build:
+      context: ./metamcp
+      dockerfile: Dockerfile
+    container_name: test-mentu
+    environment:
+      METAMCP_HTTP_BEARER_TOKEN: test-token-xyz
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./test-config:/config
+    networks:
+      - test-mcp
+
+networks:
+  test-mcp:
+    driver: bridge
