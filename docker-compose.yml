@@ -5,6 +5,7 @@ services:
     build:
       context: ./metamcp
       dockerfile: Dockerfile
+    pull_policy: build  # Force rebuild on Portainer redeploy
     container_name: mentu-metamcp
     restart: unless-stopped
     ports:
@@ -28,6 +29,7 @@ services:
     build:
       context: ./ui
       dockerfile: Dockerfile
+    pull_policy: build  # Force rebuild on Portainer redeploy
     container_name: mentu-metamcp-ui
     restart: unless-stopped
     ports:
