@@ -1,66 +1,71 @@
 const express = require('express');
 const fs = require('fs').promises;
-const path = require('path');
-const https = require('https');
-const http = require('http');
+const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
+const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
+const { SSEClientTransport } = require('@modelcontextprotocol/sdk/client/sse.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const CONFIG_PATH = '/config/.mcp.json';
+const CONFIG_PATH = process.env.CONFIG_PATH || '/config/.mcp.json';
 const BEARER_TOKEN = process.env.METAMCP_HTTP_BEARER_TOKEN;
+// Same rule as @mentu/metamcp (dist/types.js): gateway rejects the whole config if any name fails.
+const SERVER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const INVALID_NAME_HINT = 'use letters, digits, ".", "_", or "-" (1–128 chars, must start with a letter or digit)';
 
-// Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static('public'));
 
-// Helper function to make HTTP requests with timeout
-function makeRequest(url, options, body = null) {
-  return new Promise((resolve, reject) => {
-    const urlObj = new URL(url);
-    const isHttps = urlObj.protocol === 'https:';
-    const transport = isHttps ? https : http;
-    
-    const requestOptions = {
-      hostname: urlObj.hostname,
-      port: urlObj.port || (isHttps ? 443 : 80),
-      path: urlObj.pathname + urlObj.search,
-      method: options.method || 'GET',
-      headers: options.headers || {},
-      timeout: options.timeout || 5000
-    };
-
-    const req = transport.request(requestOptions, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const jsonData = JSON.parse(data);
-          resolve({ statusCode: res.statusCode, data: jsonData });
-        } catch (e) {
-          resolve({ statusCode: res.statusCode, data: data });
-        }
-      });
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-
-    req.on('error', (e) => {
-      reject(e);
-    });
-
-    if (body) {
-      req.write(typeof body === 'string' ? body : JSON.stringify(body));
-    }
-    
-    req.end();
-  });
+function substituteEnv(headers = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(headers)) {
+    out[key] = typeof value === 'string'
+      ? value.replace(/\$\{([^}]+)\}/g, (match, name) => process.env[name] ?? match)
+      : value;
+  }
+  return out;
 }
 
-// Helper function to probe an MCP server for health and tools
-async function probeMcpServer(serverName, serverConfig) {
+function formatProbeError(error, timeoutMs) {
+  const message = error?.message || String(error);
+  const code = error?.code;
+
+  if (error?.name === 'AbortError' || /aborted/i.test(message)) {
+    return `Request timeout after ${timeoutMs}ms`;
+  }
+  if (code === 401 || /\b401\b/.test(String(message)) || /unauthorized/i.test(message)) {
+    return 'Auth failed (HTTP 401): check the Authorization header or API key';
+  }
+  if (typeof code === 'number' && code > 0) {
+    return `HTTP ${code}: ${message}`;
+  }
+  if (typeof code === 'string' && code) {
+    return `${code}: ${message}`;
+  }
+  return message;
+}
+
+function findInvalidServerNames(config) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return { typeError: 'Config must be a JSON object' };
+  }
+  if (config.mcpServers == null) {
+    return { names: [] };
+  }
+  if (typeof config.mcpServers !== 'object' || Array.isArray(config.mcpServers)) {
+    return { typeError: 'mcpServers must be an object of server name to config' };
+  }
+  return {
+    names: Object.keys(config.mcpServers).filter((name) => !SERVER_NAME_PATTERN.test(name))
+  };
+}
+
+function invalidNamesError(names) {
+  const listed = names.map((name) => JSON.stringify(name)).join(', ');
+  const noun = names.length === 1 ? 'name' : 'names';
+  return `Invalid MCP server ${noun} ${listed}: the gateway rejects this config (${INVALID_NAME_HINT}). Saving it would make MetaMCP reject the reload and crash-loop.`;
+}
+
+async function probeMcpServer(serverName, serverConfig = {}) {
   const result = {
     name: serverName,
     reachable: false,
@@ -69,8 +74,12 @@ async function probeMcpServer(serverName, serverConfig) {
     transportType: serverConfig.transportType || 'http'
   };
 
-  // Handle stdio servers - can't probe from UI
-  if (serverConfig.command || serverConfig.transportType === 'stdio') {
+  if (!SERVER_NAME_PATTERN.test(serverName)) {
+    result.error = `Invalid name: gateway rejects this config (${INVALID_NAME_HINT})`;
+    return result;
+  }
+
+  if (serverConfig.command || (serverConfig.transportType || '').toLowerCase() === 'stdio') {
     result.error = 'stdio transport - not probeable from UI';
     return result;
   }
@@ -80,109 +89,84 @@ async function probeMcpServer(serverName, serverConfig) {
     return result;
   }
 
+  let url;
   try {
-    // Prepare headers with environment variable substitution
-    const headers = {
-      'Content-Type': 'application/json',
-      ...serverConfig.headers
-    };
+    url = new URL(serverConfig.url);
+  } catch {
+    result.error = 'Invalid URL configured';
+    return result;
+  }
 
-    // Simple env var substitution (${VAR_NAME})
-    for (const [key, value] of Object.entries(headers)) {
-      if (typeof value === 'string' && value.includes('${')) {
-        const matches = value.match(/\$\{([^}]+)\}/g);
-        if (matches) {
-          let substituted = value;
-          for (const match of matches) {
-            const varName = match.slice(2, -1);
-            const envValue = process.env[varName];
-            if (envValue) {
-              substituted = substituted.replace(match, envValue);
-            }
-          }
-          headers[key] = substituted;
-        }
-      }
-    }
+  const timeoutMs = serverConfig.timeoutMs || 15000;
+  const abortController = new AbortController();
+  const timer = setTimeout(() => abortController.abort(), timeoutMs);
+  const requestInit = {
+    headers: substituteEnv(serverConfig.headers),
+    signal: abortController.signal
+  };
+  const transport = (serverConfig.transportType || '').toLowerCase() === 'sse'
+    ? new SSEClientTransport(url, { requestInit })
+    : new StreamableHTTPClientTransport(url, { requestInit });
+  const client = new Client({ name: 'mentu-metamcp-ui-probe', version: '1.0.0' });
 
-    // Try to call the MCP tools/list endpoint
-    // Note: This is a simplified probe - real MCP might use different handshake
-    const toolsListPayload = {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/list',
-      params: {}
-    };
-
-    const response = await makeRequest(
-      serverConfig.url,
-      {
-        method: 'POST',
-        headers: headers,
-        timeout: 5000
-      },
-      toolsListPayload
-    );
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      result.reachable = true;
-      
-      // Parse tools from response
-      if (response.data && response.data.result && response.data.result.tools) {
-        result.tools = response.data.result.tools.map(tool => ({
-          name: tool.name,
-          description: tool.description || ''
-        }));
-      } else if (Array.isArray(response.data)) {
-        // Some MCPs might return tools directly
-        result.tools = response.data.map(tool => ({
-          name: tool.name || tool,
-          description: tool.description || ''
-        }));
-      }
-    } else {
-      result.error = `HTTP ${response.statusCode}`;
-    }
+  try {
+    await client.connect(transport, { timeout: timeoutMs, signal: abortController.signal });
+    result.reachable = true;
+    const { tools } = await client.listTools(undefined, { timeout: timeoutMs, signal: abortController.signal });
+    result.tools = (tools || []).map((tool) => ({
+      name: tool.name,
+      description: tool.description || ''
+    }));
   } catch (error) {
-    result.error = error.message;
+    result.reachable = false;
+    result.tools = [];
+    result.error = formatProbeError(error, timeoutMs);
+  } finally {
+    clearTimeout(timer);
+    try {
+      await transport.terminateSession?.();
+    } catch {
+      // Session teardown is best-effort; the probe result already stands.
+    }
+    try {
+      await client.close();
+    } catch {
+      // Ignore close errors after a failed handshake.
+    }
   }
 
   return result;
 }
 
-// Bearer token authentication middleware
 const authenticate = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  
+
   if (!BEARER_TOKEN) {
     return res.status(500).json({ error: 'Server misconfigured: METAMCP_HTTP_BEARER_TOKEN not set' });
   }
-  
+
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized: Bearer token required' });
   }
-  
+
   const token = authHeader.substring(7);
   if (token !== BEARER_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized: Invalid token' });
   }
-  
+
   next();
 };
 
-// Health check (no auth)
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Load config
 app.get('/api/config', authenticate, async (req, res) => {
   try {
     const content = await fs.readFile(CONFIG_PATH, 'utf8');
     res.json({ content });
   } catch (error) {
     if (error.code === 'ENOENT') {
-      // Initialize empty config if it doesn't exist
       const defaultConfig = JSON.stringify({ mcpServers: {} }, null, 2);
       await fs.writeFile(CONFIG_PATH, defaultConfig, 'utf8');
       res.json({ content: defaultConfig });
@@ -192,38 +176,42 @@ app.get('/api/config', authenticate, async (req, res) => {
   }
 });
 
-// Save config
 app.post('/api/config', authenticate, async (req, res) => {
   try {
     const { content } = req.body;
-    
+
     if (!content) {
       return res.status(400).json({ error: 'Content is required' });
     }
-    
-    // Validate JSON
+
+    let parsed;
     try {
-      JSON.parse(content);
-    } catch (e) {
-      return res.status(400).json({ error: `Invalid JSON: ${e.message}` });
+      parsed = JSON.parse(content);
+    } catch (error) {
+      return res.status(400).json({ error: `Invalid JSON: ${error.message}` });
     }
-    
-    // Write config file
+
+    const invalid = findInvalidServerNames(parsed);
+    if (invalid.typeError) {
+      return res.status(400).json({ error: invalid.typeError });
+    }
+    if (invalid.names.length > 0) {
+      return res.status(400).json({ error: invalidNamesError(invalid.names) });
+    }
+
     await fs.writeFile(CONFIG_PATH, content, 'utf8');
-    
-    res.json({ 
-      success: true, 
-      message: 'Config saved successfully. MetaMCP will reload automatically.' 
+
+    res.json({
+      success: true,
+      message: 'Config saved successfully. MetaMCP will reload automatically.'
     });
   } catch (error) {
     res.status(500).json({ error: `Failed to save config: ${error.message}` });
   }
 });
 
-// Get server health status and tools
 app.get('/api/servers/status', authenticate, async (req, res) => {
   try {
-    // Read config
     let configContent;
     try {
       configContent = await fs.readFile(CONFIG_PATH, 'utf8');
@@ -237,12 +225,9 @@ app.get('/api/servers/status', authenticate, async (req, res) => {
     const config = JSON.parse(configContent);
     const servers = config.mcpServers || {};
 
-    // Probe all servers in parallel with individual timeouts
-    const probePromises = Object.entries(servers).map(([name, serverConfig]) => 
-      probeMcpServer(name, serverConfig)
+    const results = await Promise.all(
+      Object.entries(servers).map(([name, serverConfig]) => probeMcpServer(name, serverConfig))
     );
-
-    const results = await Promise.all(probePromises);
 
     res.json({ servers: results });
   } catch (error) {
@@ -250,9 +235,23 @@ app.get('/api/servers/status', authenticate, async (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`MetaMCP UI running on port ${PORT}`);
-  console.log(`Config path: ${CONFIG_PATH}`);
-  console.log(`Authentication: ${BEARER_TOKEN ? 'Enabled' : 'DISABLED - SET METAMCP_HTTP_BEARER_TOKEN'}`);
-});
+function startServer() {
+  return app.listen(PORT, '0.0.0.0', () => {
+    console.log(`MetaMCP UI running on port ${PORT}`);
+    console.log(`Config path: ${CONFIG_PATH}`);
+    console.log(`Authentication: ${BEARER_TOKEN ? 'Enabled' : 'DISABLED - SET METAMCP_HTTP_BEARER_TOKEN'}`);
+  });
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  probeMcpServer,
+  substituteEnv,
+  SERVER_NAME_PATTERN,
+  findInvalidServerNames,
+  startServer
+};
