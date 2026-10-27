@@ -7,9 +7,7 @@ services:
       dockerfile: Dockerfile
       args:
         BUILD_VERSION: "8"
-    image: mentu-metamcp:8
     pull_policy: build
-    container_name: mentu-metamcp
     restart: unless-stopped
     ports:
       - "${METAMCP_PORT:-8080}:8080"
@@ -34,9 +32,7 @@ services:
       dockerfile: Dockerfile
       args:
         BUILD_VERSION: "8"
-    image: mentu-metamcp-ui:8
     pull_policy: build
-    container_name: mentu-metamcp-ui
     restart: unless-stopped
     ports:
       - "${UI_PORT:-3000}:3000"
